@@ -1,140 +1,185 @@
-from flask import Flask,render_template,request,session,redirect,url_for
+import os
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 from pymongo import MongoClient
-from werkzeug.utils import secure_filename   
+from werkzeug.utils import secure_filename
 from bson import ObjectId
 from datetime import datetime
-import os
 
-api=Flask(__name__)
-api.secret_key="1234567890"
+app = Flask(__name__)
+app.secret_key = "1234567890"
 
-cluster=MongoClient("mongodb://127.0.0.1:27017")
-db=cluster['project']
-uregister=db['user']
-viewproduct=db['auction']
-addproduct=db['products']
+# Database Connection
+cluster = MongoClient("mongodb://127.0.0.1:27017")
+db = cluster['auction_project']
+users = db['users']
+items = db['auction_items']
+bids = db['bids']
 
-
-UPLOAD_FOLDER = 'static/uploads/'  # Set your desired folder
+# File Upload Configuration
+UPLOAD_FOLDER = 'static/uploads/'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Helper function to check allowed file extensions
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-
-@api.route("/")
+@app.route("/")
 def index():
-    print("hellow")
+    """Render the homepage."""
     return render_template("index.html")
 
-@api.route("/ureg")
-def ureg():
+@app.route("/register")
+def register_page():
+    """Render the signup page."""
     return render_template("signup.html")
 
-@api.route("/ulog")
-def ulog():
+@app.route("/login")
+def login_page():
+    """Render the login page."""
     return render_template("login.html")
 
-@api.route("/additem")
-def additem():
-    return render_template("sell_items.html")
-
-@api.route("/additemss" ,methods=["post"])
-def additemss():
-    return render_template("sell_items.html")
-
-
-@api.route("/partauction")
-def partauction():
-    return render_template("auction.html")
-
-@api.route("/home" , methods=["post"])
-def home():
+@app.route("/home")
+def home_page():
     return render_template("home.html")
 
-@api.route("/biditem")
-def biditem():
-    return render_template("biditem.html")
+@app.route("/item")
+def add_items():
+    return render_template("sell_items.html")
 
-@api.route("/showsellitems")
-def showsellitems():
-    return render_template("show_sell_items_details.html")
+@app.route("/signup", methods=['POST'])
+def user_register():
+    """Handle user signup."""
+    username = request.form["Username"]
+    email = request.form["Email"]
+    password = request.form["Password"]
+    confirm_password = request.form["ConfirmPassword"]
 
-@api.route("/biditems")
-def biditems():
-    return render_template("biditem.html")
+    if password != confirm_password:
+        return render_template("signup.html", status="Passwords don't match")
 
+    if users.find_one({"username": username}):
+        return render_template("signup.html", status="User already exists")
 
-@api.route("/userregister",methods=['post'])
-def userregister():
-    uname=request.form.get("username")
-    uemail=request.form.get("email")
-    upass=request.form.get("password")
-    uconpass=request.form.get("confirm_password")
-    print(uname,uemail,upass,uconpass)
-    user = uregister.find_one({"username": uname})
-    if upass!=uconpass:
-        return render_template("signup.html",status="Passwords doesn't match")
-    if user:
-        return render_template("signup.html",status="User Already Existed")
-    uregister.insert_one({"username": uname,"email": uemail,"password": upass})
-    return render_template("signup.html",status="Registration Successful")
+    users.insert_one({"username": username, "email": email, "password": password})
+    return render_template("signup.html", status="Registration Successful")
 
-@api.route("/userlogin",methods=['post'])
-def userlogin():
-    uname=request.form.get("Username")
-    upass=request.form.get("Password")
-    print(uname,upass)
-    user=uregister.find_one({"username": uname})
-    if user:
-        if user["password"] == upass:
-            session['username']=uname
-            return render_template("home.html")
-       
-    return render_template("login.html",status="Invalid Login Credentials")
-    
+@app.route("/login", methods=['POST'])
+def user_login():
+    """Handle user login."""
+    username = request.form.get("Username")
+    password = request.form.get("Password")
 
-@api.route('/additemdetails', methods=['POST'])
-def additemdetails():
-    try:
-        # Retrieve form data
-        item_name = request.form['itemName']
-        category = request.form['category']
-        description = request.form['description']
-        base_price = float(request.form['basePrice'])  # Convert to float
-        uploaded_files = request.files.getlist('images[]')
+    user = users.find_one({"username": username})
+    if user and user["password"] == password:
+        session['username'] = username
+        return redirect("/home")
 
-        # Validate and save uploaded files
-        saved_file_paths = []
-        for file in uploaded_files:
-            if file and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                filepath = os.path.join(api.config['UPLOAD_FOLDER'], filename)
-                file.save(filepath)
-                saved_file_paths.append(filepath)
-            else:
-                return "Invalid file type.", 400
+    return render_template("login.html", status="Invalid Login Credentials")
 
-        # Prepare data for MongoDB
-        item_data = {
-            "itemName": item_name,
-            "category": category,
-            "description": description,
-            "basePrice": base_price,
-            "images": saved_file_paths
-        }
+@app.route("/sellitems")
+def sell_items():
+    """Render the Sell Items page."""
+    if 'username' not in session:
+        return redirect(url_for('login_page'))
+    return render_template("sellitems.html")
 
-        # Insert data into MongoDB
-        addproduct.insert_one(item_data)
+@app.route("/additem", methods=['POST'])
+def add_item():
+    """Handle form submission for adding auction items."""
+    if 'username' not in session:
+        return redirect(url_for('login_page'))
 
-        # Redirect to a success page or home
-        return render_template("show_sell_items_details.html")
+    item_name = request.form["itemName"]
+    category = request.form["category"]
+    description = request.form["description"]
+    base_price = int(request.form["basePrice"])
+    seller = session["username"]
 
-    except Exception as e:
-        return f"An error occurred: {e}", 500
+    # Ensure upload folder exists
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+    # Handle image uploads
+    image_urls = []
+    if 'images[]' in request.files:
+        images = request.files.getlist('images[]')  # Indentation fixed
+        for image in images:
+            if image and allowed_file(image.filename):
+                filename = secure_filename(image.filename)
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
-if __name__=="__main__":
-    api.run(port=5000,debug=True)
+                print(filepath)
+                try:
+                    print(f"Saving image to: {filepath}")
+                    image.save(filepath)
+                    print(f"✅ Successfully saved: {filepath}")
+                    image_urls.append(filename)  # Store only the filename
+                except Exception as e:
+                    print(f"❌ Error saving image: {e}")
 
+    # Store item details in MongoDB
+    item = {
+        "name": item_name,
+        "category": category,
+        "description": description,
+        "base_price": base_price,
+        "current_price": base_price,
+        "highest_bidder": None,
+        "seller": seller,
+        "images": image_urls,  # Store only the filenames
+        "created_at": datetime.utcnow()
+    }
+    items.insert_one(item)
+
+    return redirect(url_for('home_page'))
+
+@app.route("/bid/<item_id>", methods=['POST'])
+def place_bid(item_id):
+    """Allows a user to place a bid on an auction item."""
+    if 'username' not in session:
+        return jsonify({"error": "You must be logged in to place a bid"}), 401
+
+    username = session["username"]
+    bid_amount = int(request.form["bidAmount"])
+
+    item = items.find_one({"_id": ObjectId(item_id)})
+    if not item:
+        return jsonify({"error": "Item not found"}), 404
+
+    if bid_amount <= item["current_price"]:
+        return jsonify({"error": "Bid must be higher than the current price"}), 400
+
+    items.update_one(
+        {"_id": ObjectId(item_id)},
+        {"$set": {"current_price": bid_amount, "highest_bidder": username}}
+    )
+
+    # Store bid in separate collection
+    bids.insert_one({
+        "item_id": ObjectId(item_id),  # Fixing item_id to be stored as ObjectId
+        "bidder": username,
+        "amount": bid_amount,
+        "timestamp": datetime.utcnow()
+    })
+
+    return jsonify({"success": "Bid placed successfully!"})
+
+@app.route("/get_auction_items", methods=['GET'])
+def get_auction_items():
+    """API to fetch all auction items."""
+    items_list = list(items.find({}))
+    for item in items_list:
+        item["_id"] = str(item["_id"])
+        # Generate full URLs for the images
+        item["images"] = [url_for('static', filename=f'uploads/{filename}', _external=True) for filename in item["images"]]
+    return jsonify(items_list)
+
+@app.route("/logout")
+def logout():
+    """Handle user logout."""
+    session.pop('username', None)
+    return redirect(url_for('login_page'))
+
+if __name__ == "__main__":
+    app.run(host='0.0.0.0',port=5000, debug=True)

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bid-Haven - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            fetch('/get_auction_items')
+                .then(response => response.json())
+                .then(data => {
+                    const auctionContainer = document.getElementById("auction-items");
+                    auctionContainer.innerHTML = data.map(item => `
+                        <div class='bg-white p-4 shadow rounded'>
+                            <img src="${item.image}" class='w-full h-40 object-cover rounded'>
+                            <h3 class='text-lg font-bold mt-2'>${item.name}</h3>
+                            <p class='text-gray-600'>${item.category}</p>
+                            <button class='bg-blue-600 text-white px-4 py-2 rounded mt-2'>View Item</button>
+                        </div>
+                    `).join('');
+                });
+
+            // fetch('/get_upcoming_auctions')
+            //     .then(response => response.json())
+            //     .then(data => {
+            //         const upcomingContainer = document.getElementById("upcoming-auctions");
+            //         upcomingContainer.innerHTML = data.map(item => `
+            //             <div class='bg-white p-4 shadow rounded'>
+            //                 <img src="${item.image}" class='w-full h-40 object-cover rounded'>
+            //                 <h3 class='text-lg font-bold mt-2'>${item.name}</h3>
+            //                 <p class='text-gray-600'>${item.category}</p>
+            //                 <button class='bg-blue-600 text-white px-4 py-2 rounded mt-2'>Place Bid</button>
+            //             </div>
+            //         `).join('');
+            //     });
+        });
+    </script>
+</head>
+<body class="bg-gray-100">
+    <header class="bg-blue-600 text-white p-4 flex justify-between items-center">
+        <h1 class="text-xl font-bold">Bid-Haven</h1>
+        <div class="relative w-1/2">
+            <input type="text" placeholder="Search items, categories..." class="w-full p-2 rounded">
+            <i class="absolute right-3 top-3 bx bx-search text-blue-600 cursor-pointer"></i>
+        </div>
+        <div class="relative">
+            <i class="bx bxs-user text-2xl cursor-pointer"></i>
+            <div class="absolute right-0 mt-2 bg-white shadow-md rounded hidden">
+                <a href="#" class="block px-4 py-2 text-blue-600">My Profile</a>
+                <a href="#" class="block px-4 py-2 text-blue-600">Logout</a>
+            </div>
+        </div>
+    </header>
+    
+    <div class="container mx-auto p-6">
+        <h2 class="text-2xl font-bold text-center">Your Auction Items</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4" id="auction-items"></div>
+    </div>
+
+    <div class="text-center mt-6">
+        <button onclick="window.location.href='/item'" class="bg-blue-600 text-white px-4 py-2 rounded">
+            Add Items
+        </button>
+    </div>
+
+    <div class="container mx-auto p-6">
+        <h2 class="text-2xl font-bold text-center">Upcoming Auctions</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4" id="upcoming-auctions"></div>
+    </div>
+
+    <div class="text-center mt-6">
+        <button class="bg-blue-600 text-white px-4 py-2 rounded">Participate in Auction</button>
+    </div>
+
+    <footer class="bg-gray-900 text-white text-center p-4 mt-6">
+        <p>&copy; Bid-Haven Ltd. All rights reserved.</p>
+    </footer>
+</body>
+</html>
