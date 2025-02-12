@@ -7,33 +7,47 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
+            // Fetching auction items
             fetch('/get_auction_items')
                 .then(response => response.json())
                 .then(data => {
+                    console.log(data);  // Log data to the console for debugging
                     const auctionContainer = document.getElementById("auction-items");
-                    auctionContainer.innerHTML = data.map(item => `
+                    
+                    // If there are auction items, render them
+                    if (data.length > 0) {
+                        auctionContainer.innerHTML = data.map(item => `
+                            <div class='bg-white p-4 shadow rounded'>
+                                <!-- Render item image -->
+                                <img src="/static/uploads/${item.image}" class="w-full h-40 object-cover rounded">
+                                <h3 class='text-lg font-bold mt-2'>${item.name}</h3>
+                                <p class='text-gray-600'>${item.category}</p>
+                                <button class='bg-blue-600 text-white px-4 py-2 rounded mt-2'>View Item</button>
+                            </div>
+                        `).join('');
+                    } else {
+                        auctionContainer.innerHTML = "<p>No auction items available.</p>";
+                    }
+                })
+                .catch(error => console.error('Error fetching auction items:', error));
+
+            // Uncomment and fix upcoming auctions code if needed
+            /*
+            fetch('/get_upcoming_auctions')
+                .then(response => response.json())
+                .then(data => {
+                    const upcomingContainer = document.getElementById("upcoming-auctions");
+                    upcomingContainer.innerHTML = data.map(item => `
                         <div class='bg-white p-4 shadow rounded'>
                             <img src="${item.image}" class='w-full h-40 object-cover rounded'>
                             <h3 class='text-lg font-bold mt-2'>${item.name}</h3>
                             <p class='text-gray-600'>${item.category}</p>
-                            <button class='bg-blue-600 text-white px-4 py-2 rounded mt-2'>View Item</button>
+                            <button class='bg-blue-600 text-white px-4 py-2 rounded mt-2'>Place Bid</button>
                         </div>
                     `).join('');
-                });
-
-            // fetch('/get_upcoming_auctions')
-            //     .then(response => response.json())
-            //     .then(data => {
-            //         const upcomingContainer = document.getElementById("upcoming-auctions");
-            //         upcomingContainer.innerHTML = data.map(item => `
-            //             <div class='bg-white p-4 shadow rounded'>
-            //                 <img src="${item.image}" class='w-full h-40 object-cover rounded'>
-            //                 <h3 class='text-lg font-bold mt-2'>${item.name}</h3>
-            //                 <p class='text-gray-600'>${item.category}</p>
-            //                 <button class='bg-blue-600 text-white px-4 py-2 rounded mt-2'>Place Bid</button>
-            //             </div>
-            //         `).join('');
-            //     });
+                })
+                .catch(error => console.error('Error fetching upcoming auctions:', error));
+            */
         });
     </script>
 </head>
@@ -55,7 +69,9 @@
     
     <div class="container mx-auto p-6">
         <h2 class="text-2xl font-bold text-center">Your Auction Items</h2>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4" id="auction-items"></div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4" id="auction-items">
+            <!-- Auction items will be populated here -->
+        </div>
     </div>
 
     <div class="text-center mt-6">
@@ -64,9 +80,11 @@
         </button>
     </div>
 
-    <div class="container mx-auto p-6">
+    <div class="container mx-auto p-6 mt-8">
         <h2 class="text-2xl font-bold text-center">Upcoming Auctions</h2>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4" id="upcoming-auctions"></div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4" id="upcoming-auctions">
+            <!-- Upcoming auctions will be populated here -->
+        </div>
     </div>
 
     <div class="text-center mt-6">

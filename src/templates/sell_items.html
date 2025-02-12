@@ -212,10 +212,10 @@
         </div>
         <div class="form-container">
             <h1>Add Your Item To Auction</h1>
-            <form action="/additem" method="POST">
+            <form action="/additem" method="POST" enctype="multipart/form-data">
                 <label for="itemName">Name of the Item:</label>
                 <input type="text" id="itemName" name="itemName" placeholder="Enter item name" required>
-
+            
                 <label for="category">Category of the Item:</label>
                 <select id="category" name="category" required>
                     <option value="" disabled selected>Select category</option>
@@ -226,18 +226,19 @@
                     <option value="Furniture">Furniture</option>
                     <option value="Others">Others</option>
                 </select>
-
+            
                 <label for="description">Description of the Item:</label>
                 <textarea id="description" name="description" rows="4" placeholder="Enter a detailed description of the item" required></textarea>
-
+            
                 <label for="images">Upload Pictures:</label>
-                <input type="file" id="images" name="images[]" accept="image/*" multiple required>
-
+                <input type="file" id="images" name="images" accept="image/*" required>
+            
                 <label for="basePrice">Base Price:</label>
-                <input type="number" id="basePrice" name="basePrice" placeholder="Enter the base price in rupees" required>
-
+                <input type="number" id="basePrice" name="basePrice" placeholder="Enter the base price in rupees" required min="1">
+            
                 <button type="submit">Submit</button>
             </form>
+            
         </div>
     </div>
     <div class="footer">

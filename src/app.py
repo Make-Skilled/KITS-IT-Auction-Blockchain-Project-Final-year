@@ -97,26 +97,22 @@ def add_item():
     base_price = int(request.form["basePrice"])
     seller = session["username"]
 
-    # Ensure upload folder exists
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    # Handle single image upload
+    image_url = None
+    if 'images' in request.files:
+        image = request.files['images']
 
-    # Handle image uploads
-    image_urls = []
-    if 'images[]' in request.files:
-        images = request.files.getlist('images[]')  # Indentation fixed
-        for image in images:
-            if image and allowed_file(image.filename):
-                filename = secure_filename(image.filename)
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        if image and allowed_file(image.filename):
+            filename = secure_filename(image.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
-                print(filepath)
-                try:
-                    print(f"Saving image to: {filepath}")
-                    image.save(filepath)
-                    print(f"✅ Successfully saved: {filepath}")
-                    image_urls.append(filename)  # Store only the filename
-                except Exception as e:
-                    print(f"❌ Error saving image: {e}")
+            try:
+                print(f"Saving image to: {filepath}")
+                image.save(filepath)
+                print(f"✅ Successfully saved: {filepath}")
+                image_url = filename  # Store only the filename in the database
+            except Exception as e:
+                print(f"❌ Error saving image: {e}")
 
     # Store item details in MongoDB
     item = {
@@ -127,7 +123,7 @@ def add_item():
         "current_price": base_price,
         "highest_bidder": None,
         "seller": seller,
-        "images": image_urls,  # Store only the filenames
+        "image": image_url,  # Store only the filename
         "created_at": datetime.utcnow()
     }
     items.insert_one(item)
@@ -143,36 +139,17 @@ def place_bid(item_id):
     username = session["username"]
     bid_amount = int(request.form["bidAmount"])
 
-    item = items.find_one({"_id": ObjectId(item_id)})
-    if not item:
-        return jsonify({"error": "Item not found"}), 404
-
-    if bid_amount <= item["current_price"]:
-        return jsonify({"error": "Bid must be higher than the current price"}), 400
-
-    items.update_one(
-        {"_id": ObjectId(item_id)},
-        {"$set": {"current_price": bid_amount, "highest_bidder": username}}
-    )
-
-    # Store bid in separate collection
-    bids.insert_one({
-        "item_id": ObjectId(item_id),  # Fixing item_id to be stored as ObjectId
-        "bidder": username,
-        "amount": bid_amount,
-        "timestamp": datetime.utcnow()
-    })
-
     return jsonify({"success": "Bid placed successfully!"})
 
 @app.route("/get_auction_items", methods=['GET'])
 def get_auction_items():
     """API to fetch all auction items."""
-    items_list = list(items.find({}))
+    items_list = list(items.find({"seller":session['username']}))
+    print(items_list)
     for item in items_list:
         item["_id"] = str(item["_id"])
         # Generate full URLs for the images
-        item["images"] = [url_for('static', filename=f'uploads/{filename}', _external=True) for filename in item["images"]]
+        # item["image"] = [url_for('static', filename=f'uploads/{filename}', _external=True) for filename in item["image"]]
     return jsonify(items_list)
 
 @app.route("/logout")
@@ -182,4 +159,4 @@ def logout():
     return redirect(url_for('login_page'))
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0',port=5000, debug=True)
+    app.run(debug=True)
