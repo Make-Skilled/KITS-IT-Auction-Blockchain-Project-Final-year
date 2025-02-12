@@ -4,9 +4,33 @@ from pymongo import MongoClient
 from werkzeug.utils import secure_filename
 from bson import ObjectId
 from datetime import datetime
+from web3 import Web3, HTTPProvider
+import json
 
 app = Flask(__name__)
 app.secret_key = "1234567890"
+
+x = "../build/contracts/AuctionBid.json"
+blockchainServer = "HTTP://127.0.0.1:7545"
+
+def connectWithContract(wallet, artifact=x):
+    web3 = Web3(HTTPProvider(blockchainServer))  # it is connecting with server
+    print('Connected with Blockchain Server')
+
+    if wallet == 0:
+        web3.eth.defaultAccount = web3.eth.accounts[0]
+    else:
+        web3.eth.defaultAccount = wallet
+    print('Wallet Selected')
+
+    with open(artifact) as f:
+        artifact_json = json.load(f)
+        contract_abi = artifact_json['abi']
+        contract_address = artifact_json['networks']['5777']['address']
+
+    contract = web3.eth.contract(abi=contract_abi, address=contract_address)
+    print('Contract Selected')
+    return contract, web3
 
 # Database Connection
 cluster = MongoClient("mongodb://127.0.0.1:27017")
@@ -42,7 +66,14 @@ def login_page():
 
 @app.route("/home")
 def home_page():
-    return render_template("home.html")
+    # Get all items from MongoDB
+    auction_items = list(items.find({}))
+    
+    # Convert ObjectId to string for each item
+    for item in auction_items:
+        item['_id'] = str(item['_id'])
+    
+    return render_template("home.html",items=auction_items    )
 
 @app.route("/item")
 def add_items():
@@ -73,7 +104,7 @@ def user_login():
 
     user = users.find_one({"username": username})
     if user and user["password"] == password:
-        session['username'] = username
+        session['user'] = username
         return redirect("/home")
 
     return render_template("login.html", status="Invalid Login Credentials")
@@ -81,81 +112,180 @@ def user_login():
 @app.route("/sellitems")
 def sell_items():
     """Render the Sell Items page."""
-    if 'username' not in session:
+    if 'user' not in session:
         return redirect(url_for('login_page'))
     return render_template("sellitems.html")
 
-@app.route("/additem", methods=['POST'])
+@app.route("/add_item", methods=['POST'])
 def add_item():
     """Handle form submission for adding auction items."""
-    if 'username' not in session:
+    if 'user' not in session:
         return redirect(url_for('login_page'))
 
-    item_name = request.form["itemName"]
-    category = request.form["category"]
-    description = request.form["description"]
-    base_price = int(request.form["basePrice"])
-    seller = session["username"]
+    try:
+        item_name = request.form["itemName"]
+        category = request.form["category"]
+        description = request.form["description"]
+        base_price = int(request.form["basePrice"])
+        seller = session["user"]
 
-    # Handle single image upload
-    image_url = None
-    if 'images' in request.files:
-        image = request.files['images']
+        # Handle single image upload
+        image_url = None
+        if 'image' in request.files:
+            file = request.files['image']
+            print("Image file received:", file.filename)
+            if file and file.filename != '' and allowed_file(file.filename):
+                try:
+                    filename = secure_filename(file.filename)
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    file.save(filepath)
+                    print(f"✅ Successfully saved image: {filepath}")
+                    image_url = filename
+                except Exception as e:
+                    print(f"❌ Error saving image: {e}")
+                    return f"Error uploading image: {str(e)}", 500
+            else:
+                print("❌ Invalid file or filename:", file.filename if file else None)
+        else:
+            print("❌ No image file in request")
 
-        if image and allowed_file(image.filename):
-            filename = secure_filename(image.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        # First, insert into MongoDB
+        item = {
+            "name": item_name,
+            "category": category,
+            "description": description,
+            "base_price": base_price,
+            "current_price": base_price,  # Initially, current price is same as base price
+            "seller": seller,
+            "current_bidder": seller,  # Initially, seller is the current bidder
+            "image": image_url,  # Store only the filename
+            "created_at": datetime.utcnow()
+        }
+        response = items.insert_one(item)
+        item_id = str(response.inserted_id)
+        print("MongoDB Item ID:", item_id)
+
+        try:
+            # Connect to blockchain
+            print("Connecting to blockchain...")
+            contract, web3 = connectWithContract(0)  # Using the new function name
+            if not contract:
+                print("❌ Failed to connect to blockchain")
+                return redirect(url_for('home_page'))
+
+            print("Connected to blockchain, adding item...")
+            # Add item to blockchain
+            tx_hash = contract.functions.addItem(
+                seller,              # bidder (initially empty string)
+                seller,          # owner
+                item_name,       # item name
+                item_id,         # MongoDB item ID
+                int(base_price),      # base price
+                int(base_price)       # current price (initially same as base price)
+            ).transact()
+
+            # Wait for transaction to be mined
+            receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+            print("✅ Item added to blockchain")
+            print("Transaction hash:", tx_hash.hex())
+
+        except Exception as e:
+            print(f"❌ Error in blockchain connection: {str(e)}")
+        return redirect(url_for('home_page'))
+
+    except Exception as e:
+        print(f"❌ Error in add_item: {str(e)}")
+        return f"Error adding item: {str(e)}", 500
+
+@app.route("/bid/<item_id>", methods=['GET', 'POST'])
+def place_bid(item_id):
+    if 'user' not in session:
+        return redirect(url_for('login_page'))
+    try:
+        item = items.find_one({"_id": ObjectId(item_id)})
+        if not item:
+            return "Item not found", 404
+
+        if request.method == 'POST':
+            bid_amount = float(request.form.get('bid_amount'))
+            print(bid_amount)
+            
+            # Validate bid amount
+            if bid_amount <= float(item['current_price']):
+                return redirect(url_for('item_details', item_id=item_id))
+
+            # Get user details
+            user = users.find_one({"username": session['user']})
+            if not user:
+                return "User not found", 404
+
+            # Connect to blockchain
+            contract, web3 = connectWithContract(0)
+            if not contract:
+                return redirect(url_for('item_details', item_id=item_id))
 
             try:
-                print(f"Saving image to: {filepath}")
-                image.save(filepath)
-                print(f"✅ Successfully saved: {filepath}")
-                image_url = filename  # Store only the filename in the database
+                # Place bid on blockchain
+                tx_hash = contract.functions.placeBid(
+                    str(item_id),     # item id
+                    session['user'],   # bidder
+                    int(bid_amount)    # new price
+                ).transact()
+                
+                # Wait for transaction to be mined
+                web3.eth.wait_for_transaction_receipt(tx_hash)
+
+                # Update item in MongoDB
+                items.update_one(
+                    {"_id": ObjectId(item_id)},
+                    {"$set": {
+                        "current_price": bid_amount,
+                        "current_bidder": session['user']
+                    }}
+                )
+
+                return redirect(url_for('item_details', item_id=item_id))
+
             except Exception as e:
-                print(f"❌ Error saving image: {e}")
+                print(f"Blockchain transaction error: {e}")
+                return redirect(url_for('item_details', item_id=item_id))
+                
+        return redirect(url_for('item_details', item_id=item_id))
 
-    # Store item details in MongoDB
-    item = {
-        "name": item_name,
-        "category": category,
-        "description": description,
-        "base_price": base_price,
-        "current_price": base_price,
-        "highest_bidder": None,
-        "seller": seller,
-        "image": image_url,  # Store only the filename
-        "created_at": datetime.utcnow()
-    }
-    items.insert_one(item)
-
-    return redirect(url_for('home_page'))
-
-@app.route("/bid/<item_id>", methods=['POST'])
-def place_bid(item_id):
-    """Allows a user to place a bid on an auction item."""
-    if 'username' not in session:
-        return jsonify({"error": "You must be logged in to place a bid"}), 401
-
-    username = session["username"]
-    bid_amount = int(request.form["bidAmount"])
-
-    return jsonify({"success": "Bid placed successfully!"})
+    except Exception as e:
+        print(f"Error in place_bid: {e}")
+        return "Error processing bid", 500
 
 @app.route("/get_auction_items", methods=['GET'])
 def get_auction_items():
     """API to fetch all auction items."""
-    items_list = list(items.find({"seller":session['username']}))
-    print(items_list)
+    items_list = list(items.find({"seller":session['user']}))
     for item in items_list:
         item["_id"] = str(item["_id"])
-        # Generate full URLs for the images
-        # item["image"] = [url_for('static', filename=f'uploads/{filename}', _external=True) for filename in item["image"]]
     return jsonify(items_list)
+
+@app.route("/item/<item_id>")
+def item_details(item_id):
+    """
+    Display details of a specific auction item.
+    """
+    try:
+        # Convert string ID to ObjectId
+        item = items.find_one({"_id": ObjectId(item_id)})
+        if item:
+            # Get all bids for this item
+            item_bids = list(bids.find({"item_id": item_id}).sort("amount", -1))
+            return render_template("item_details.html", item=item, bids=item_bids)
+        else:
+            return "Item not found", 404
+    except Exception as e:
+        print(f"Error fetching item details: {e}")
+        return "Error fetching item details", 500
 
 @app.route("/logout")
 def logout():
     """Handle user logout."""
-    session.pop('username', None)
+    session.pop('user', None)
     return redirect(url_for('login_page'))
 
 if __name__ == "__main__":

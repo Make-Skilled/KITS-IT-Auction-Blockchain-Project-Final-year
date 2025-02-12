@@ -212,7 +212,7 @@
         </div>
         <div class="form-container">
             <h1>Add Your Item To Auction</h1>
-            <form action="/additem" method="POST" enctype="multipart/form-data">
+            <form action="/add_item" method="POST" enctype="multipart/form-data">
                 <label for="itemName">Name of the Item:</label>
                 <input type="text" id="itemName" name="itemName" placeholder="Enter item name" required>
             
@@ -230,8 +230,8 @@
                 <label for="description">Description of the Item:</label>
                 <textarea id="description" name="description" rows="4" placeholder="Enter a detailed description of the item" required></textarea>
             
-                <label for="images">Upload Pictures:</label>
-                <input type="file" id="images" name="images" accept="image/*" required>
+                <label for="image">Upload Pictures:</label>
+                <input type="file" id="image" name="image" accept="image/*" required>
             
                 <label for="basePrice">Base Price:</label>
                 <input type="number" id="basePrice" name="basePrice" placeholder="Enter the base price in rupees" required min="1">
