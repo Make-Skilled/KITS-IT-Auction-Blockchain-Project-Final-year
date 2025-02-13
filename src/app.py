@@ -6,6 +6,7 @@ from bson import ObjectId
 from datetime import datetime
 from web3 import Web3, HTTPProvider
 import json
+import time
 
 app = Flask(__name__)
 app.secret_key = "1234567890"
@@ -281,6 +282,68 @@ def item_details(item_id):
     except Exception as e:
         print(f"Error fetching item details: {e}")
         return "Error fetching item details", 500
+
+@app.route("/place_bid/<item_id>")
+def get_item_details(item_id):
+    """Fetch item details from blockchain."""
+    try:
+        print(f"Fetching details for item: {item_id}")
+        contract, web3 = connectWithContract(0)
+        
+        # Get the item details from MongoDB first
+        item_data = items.find_one({"_id": ObjectId(item_id)})
+        if not item_data:
+            return jsonify({"error": "Item not found"}), 404
+            
+        # Convert ObjectId to string for the contract call
+        item_id_str = str(item_data['_id'])
+        item = contract.functions.getItem(item_id_str).call()
+        
+        # Convert timestamp to readable format
+        timestamp = datetime.fromtimestamp(item[6])
+        formatted_time = timestamp.strftime("%Y-%m-%d %I:%M %p")
+        
+        # Create list with formatted time
+        formatted_item = list(item[:6]) + [formatted_time]
+        print("Item details:", formatted_item)
+        return render_template("place_bid.html", item=formatted_item)
+    except Exception as e:
+        print(f"Error fetching item details: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/submit_bid/<item_id>", methods=['POST'])
+def submit_bid(item_id):
+    """Handle bid submission."""
+    try:
+        if 'user' not in session:
+            return redirect(url_for('login_page'))
+            
+        bid_amount = int(request.form['bidAmount'])
+        
+        contract, web3 = connectWithContract(0)
+        
+        print(f"Placing bid: Item={item_id}, Bidder={session['user']}, Amount={bid_amount}")
+        
+        # Call the placeBid function on the smart contract
+        tx_hash = contract.functions.placeBid(
+            item_id,
+            session['user'],
+            bid_amount
+        ).transact()
+        
+        # Wait for transaction to be mined
+        receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+        print(f"Transaction receipt: {receipt}")
+        
+        # Force a small delay to ensure the blockchain state is updated
+        time.sleep(2)
+        
+        # Redirect back to the place bid page to show updated information
+        return redirect(url_for('get_item_details', item_id=item_id))
+        
+    except Exception as e:
+        print(f"Error submitting bid: {e}")
+        return f"Error submitting bid: {str(e)}", 500
 
 @app.route("/logout")
 def logout():

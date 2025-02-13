@@ -14,6 +14,7 @@ contract AuctionBid {
 
     // Array to store all items
     Item[] public items;
+    mapping(string => Item) public itemMapping;
     
     function addItem(
         string memory _bidder,
@@ -41,6 +42,7 @@ contract AuctionBid {
         });
 
         items.push(newItem);
+        itemMapping[_itemId] = newItem;
     }
 
     function placeBid(
@@ -52,13 +54,19 @@ contract AuctionBid {
         require(bytes(_bidder).length > 0, "Bidder cannot be empty");
         require(_newPrice > 0, "Bid amount must be greater than 0");
 
-        // Find the item and update its current price
+        Item storage currentItem = itemMapping[_itemId];
+        require(bytes(currentItem.itemId).length > 0, "Item not found");
+        require(_newPrice > currentItem.currentPrice, "New bid must be higher than current price");
+
+        // Update the item in mapping
+        currentItem.currentPrice = _newPrice;
+        currentItem.bidder = _bidder;
+        currentItem.timestamp = block.timestamp;
+
+        // Update the item in array
         for (uint i = 0; i < items.length; i++) {
             if (keccak256(bytes(items[i].itemId)) == keccak256(bytes(_itemId))) {
-                require(_newPrice > items[i].currentPrice, "New bid must be higher than current price");
-                items[i].currentPrice = _newPrice;
-                items[i].bidder = _bidder;
-                items[i].timestamp = block.timestamp;
+                items[i] = currentItem;
                 break;
             }
         }
@@ -68,7 +76,7 @@ contract AuctionBid {
         return items.length;
     }
 
-    function getItem(uint256 index) public view returns (
+    function getItem(string memory _itemId) public view returns (
         string memory bidder,
         string memory owner,
         string memory item,
@@ -77,8 +85,10 @@ contract AuctionBid {
         uint256 currentPrice,
         uint256 timestamp
     ) {
-        require(index < items.length, "Index out of bounds");
-        Item memory currentItem = items[index];
+        require(bytes(_itemId).length > 0, "ItemId cannot be empty");
+        Item storage currentItem = itemMapping[_itemId];
+        require(bytes(currentItem.itemId).length > 0, "Item not found");
+
         return (
             currentItem.bidder,
             currentItem.owner,
